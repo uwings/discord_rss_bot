@@ -28,7 +28,7 @@
 
 - Python 3.6+
 - Discord Bot Token
-- HTTP代理（可选）
+- HTTP代理
 
 ## 安装
 
@@ -44,15 +44,43 @@ pip install -r requirements.txt
 ```
 
 3. 创建.env文件并配置：
-```
+```bash
+# Discord配置
 DISCORD_CHANNEL_ID=你的频道ID
+DISCORD_TOKEN=你的Bot Token
 ```
+
+## 配置说明
+
+1. Discord Bot Token获取：
+   - 访问 [Discord Developer Portal](https://discord.com/developers/applications)
+   - 创建新应用或选择现有应用
+   - 在Bot设置页面获取Token
+
+2. Discord Channel ID获取：
+   - 在Discord中开启开发者模式
+   - 右键点击目标频道
+   - 选择"复制ID"
+
+3. 代理设置：
+   - 研发环境：127.0.0.1:7890
+   - 线上环境：192.168.5.107:7890
+   - 通过命令行参数 `--env` 自动切换环境
 
 ## 使用方法
 
 1. 运行机器人：
+
+研发环境（默认）：
 ```bash
 python discord_rss_bot.py
+# 或
+python discord_rss_bot.py --env dev
+```
+
+生产环境：
+```bash
+python discord_rss_bot.py --env prod
 ```
 
 2. 机器人会自动：
@@ -63,6 +91,6 @@ python discord_rss_bot.py
 
 ## 注意事项
 
-- 请确保Discord Bot Token的安全性
-- 如果需要使用代理，请在代码中配置代理地址
+- 请确保Discord Bot Token的安全性，不要将其提交到代码仓库
+- 使用命令行参数 `--env` 来切换环境，无需手动修改配置
 - 建议使用虚拟环境运行项目 

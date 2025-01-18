@@ -33,5 +33,6 @@ env/
 
 # Project specific
 .env
+!.env.example
 sent_articles.json
 *.log 
