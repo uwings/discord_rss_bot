@@ -8,6 +8,7 @@ import re
 import json
 import time
 import argparse
+import aiohttp
 from datetime import datetime, timezone, timedelta
 from bs4 import BeautifulSoup
 from translate import Translator
@@ -27,10 +28,7 @@ args = parse_args()
 # 加载环境变量
 load_dotenv()
 
-# 禁用SSL验证
-ssl._create_default_https_context = ssl._create_unverified_context
-
-# 根据环境设置代理
+# 设置代理
 PROXY_HOSTS = {
     'dev': '127.0.0.1',
     'prod': '192.168.5.107'
@@ -38,6 +36,17 @@ PROXY_HOSTS = {
 
 proxy_host = PROXY_HOSTS[args.env]
 proxy_url = f'http://{proxy_host}:7890'
+
+# 创建自定义的SSL上下文
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
+# 创建自定义的aiohttp会话
+connector = aiohttp.TCPConnector(ssl=ssl_context)
+http_session = aiohttp.ClientSession(connector=connector)
+
+# 设置代理环境变量
 os.environ['HTTP_PROXY'] = proxy_url
 os.environ['HTTPS_PROXY'] = proxy_url
 
@@ -49,7 +58,10 @@ translator = Translator(to_lang='zh', from_lang='en', provider='mymemory')
 
 # 设置 Discord 机器人
 intents = discord.Intents.default()
-client = discord.Client(intents=intents, proxy=proxy_url, proxy_auth=None)
+client = discord.Client(intents=intents, 
+                       proxy=proxy_url, 
+                       proxy_auth=None,
+                       connector=connector)
 
 # 配置：RSS源列表和目标Discord频道ID
 rss_feeds = [
@@ -319,16 +331,17 @@ async def on_ready():
 
 # 启动bot
 if __name__ == "__main__":
-    # 从环境变量获取Token
-    token = os.getenv('DISCORD_TOKEN')
-    if not token:
-        print("错误：未设置DISCORD_TOKEN环境变量")
-        sys.exit(1)
-        
     try:
+        # 从环境变量获取Token
+        token = os.getenv('DISCORD_TOKEN')
+        if not token:
+            print("错误：未设置DISCORD_TOKEN环境变量")
+            sys.exit(1)
+            
         print("正在连接到Discord...")
         print(f"当前环境: {args.env}")
         print(f"使用代理: {proxy_url}")
+        
         client.run(token)
     except Exception as e:
         print(f"运行Bot时出错: {str(e)}")
@@ -337,3 +350,7 @@ if __name__ == "__main__":
         print("2. Discord Token是否正确")
         print("3. Bot是否已添加到服务器")
         print("4. Bot是否有正确的权限")
+    finally:
+        # 关闭aiohttp会话
+        if not http_session.closed:
+            asyncio.run(http_session.close())
