@@ -9,12 +9,16 @@ import json
 import time
 import argparse
 import aiohttp
+import certifi
 from datetime import datetime, timezone, timedelta
 from bs4 import BeautifulSoup
 from translate import Translator
 from dotenv import load_dotenv
 import hashlib
 import sys
+
+# 设置SSL证书路径
+os.environ["SSL_CERT_FILE"] = certifi.where()
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Discord RSS Bot')
@@ -37,19 +41,6 @@ PROXY_HOSTS = {
 proxy_host = PROXY_HOSTS[args.env]
 proxy_url = f'http://{proxy_host}:7890'
 
-# 创建自定义的SSL上下文
-ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_NONE
-
-# 创建自定义的aiohttp会话
-connector = aiohttp.TCPConnector(ssl=ssl_context)
-http_session = aiohttp.ClientSession(connector=connector)
-
-# 设置代理环境变量
-os.environ['HTTP_PROXY'] = proxy_url
-os.environ['HTTPS_PROXY'] = proxy_url
-
 print(f"当前环境: {args.env}")
 print(f"使用代理: {proxy_url}")
 
@@ -58,10 +49,38 @@ translator = Translator(to_lang='zh', from_lang='en', provider='mymemory')
 
 # 设置 Discord 机器人
 intents = discord.Intents.default()
-client = discord.Client(intents=intents, 
-                       proxy=proxy_url, 
-                       proxy_auth=None,
-                       connector=connector)
+
+# 创建自定义的SSL上下文
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+ssl_context.check_hostname = True
+ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+class CustomClient(discord.Client):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.connector = None
+        self.session = None
+
+    async def setup_hook(self):
+        # 在这里初始化连接器和会话
+        self.connector = aiohttp.TCPConnector(
+            ssl=ssl_context,
+            force_close=True,
+            enable_cleanup_closed=True,
+            verify_ssl=True
+        )
+        self.session = aiohttp.ClientSession(
+            connector=self.connector,
+            timeout=aiohttp.ClientTimeout(total=30)
+        )
+
+    async def close(self):
+        if self.session:
+            await self.session.close()
+        await super().close()
+
+# 创建客户端实例
+client = CustomClient(intents=intents, proxy=proxy_url)
 
 # 配置：RSS源列表和目标Discord频道ID
 rss_feeds = [
@@ -352,5 +371,5 @@ if __name__ == "__main__":
         print("4. Bot是否有正确的权限")
     finally:
         # 关闭aiohttp会话
-        if not http_session.closed:
-            asyncio.run(http_session.close())
+        if not client.session or not client.session.closed:
+            asyncio.run(client.session.close())
