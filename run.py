@@ -20,10 +20,7 @@ from aiohttp import ClientTimeout
 from aiohttp.client_exceptions import ClientError
 from discord.http import HTTPClient
 from dns_resolver import dns_resolver
-from aiohttp_socks import ProxyConnector as SocksProxyConnector
-from urllib.parse import urlparse
 
-# 重写Discord的HTTP类
 class CustomHTTPClient(HTTPClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -33,36 +30,16 @@ class CustomHTTPClient(HTTPClient):
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         
-        # 解析代理URL
-        proxy_url = os.environ.get('HTTP_PROXY')
-        if proxy_url:
-            parsed = urlparse(proxy_url)
-            # 将HTTP代理转换为SOCKS5代理
-            socks_url = f"socks5://{parsed.netloc}"
-            logger.info(f"使用SOCKS5代理: {socks_url}")
-            
-            # 创建SOCKS connector
-            self._connector = SocksProxyConnector.from_url(
-                socks_url,
-                ssl=ssl_context,
-                verify_ssl=False,
-                force_close=False,
-                enable_cleanup_closed=True,
-                limit=10,
-                ttl_dns_cache=300,
-                use_dns_cache=True
-            )
-        else:
-            # 如果没有代理，使用普通connector
-            self._connector = aiohttp.TCPConnector(
-                ssl=ssl_context,
-                force_close=False,
-                enable_cleanup_closed=True,
-                limit=10,
-                ttl_dns_cache=300,
-                use_dns_cache=True,
-                verify_ssl=False
-            )
+        # 创建connector
+        self._connector = aiohttp.TCPConnector(
+            ssl=ssl_context,
+            force_close=False,
+            enable_cleanup_closed=True,
+            limit=10,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            verify_ssl=False
+        )
         
         # 设置更长的超时时间
         timeout = ClientTimeout(
@@ -75,17 +52,13 @@ class CustomHTTPClient(HTTPClient):
         # 创建session
         self.__session = aiohttp.ClientSession(
             connector=self._connector,
-            timeout=timeout,
-            trust_env=True
+            timeout=timeout
         )
     
     async def request(self, route, **kwargs):
         """重写请求方法，使用解析后的IP地址"""
         retries = 3
         last_error = None
-        
-        # 移除代理设置
-        kwargs.pop('proxy', None)
         
         for attempt in range(retries):
             try:
@@ -135,22 +108,7 @@ parser = argparse.ArgumentParser(description='Discord RSS Bot')
 parser.add_argument('--env', type=str, default='dev', choices=['dev', 'prod'], help='运行环境 (dev/prod)')
 args = parser.parse_args()
 
-# 根据环境设置代理
-proxy_url = None
-if args.env == 'dev':
-    proxy_url = 'http://127.0.0.1:7890'
-else:  # prod
-    proxy_url = 'http://192.168.5.107:7890'
-
 logger.info(f"当前环境: {args.env}")
-logger.info(f"使用代理: {proxy_url}")
-
-# 设置环境变量
-os.environ['HTTP_PROXY'] = proxy_url
-os.environ['HTTPS_PROXY'] = proxy_url
-os.environ['SSL_CERT_FILE'] = certifi.where()  # 设置证书路径
-logger.debug(f"环境变量设置完成: HTTP_PROXY={os.environ.get('HTTP_PROXY')}, HTTPS_PROXY={os.environ.get('HTTPS_PROXY')}")
-logger.debug(f"证书路径: {os.environ.get('SSL_CERT_FILE')}")
 
 # 加载环境变量
 load_dotenv()
@@ -448,9 +406,7 @@ async def main():
     # 创建Discord客户端
     logger.debug("创建Discord客户端...")
     client = discord.Client(
-        intents=intents,
-        proxy=None,  # 不使用代理
-        proxy_auth=None
+        intents=intents
     )
     
     logger.debug("Discord客户端创建完成")
