@@ -7,6 +7,7 @@ import importlib
 import inspect
 import aiohttp
 import argparse
+import certifi
 from pathlib import Path
 from datetime import datetime
 from translate import Translator
@@ -15,6 +16,9 @@ from rss_sources.config import RSSConfig
 from rss_sources.base import BaseRSSSource
 from typing import List, Dict
 import ssl
+
+# 设置SSL证书路径
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 # 设置日志
 logging.basicConfig(
@@ -341,13 +345,11 @@ async def main():
     )
     
     # 创建SSL上下文
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
     
     # 创建connector
     connector = ProxyConnector(
-        ssl=False,  # 只使用这一个参数来禁用SSL验证
+        ssl=ssl_context,
         limit=10,
         ttl_dns_cache=300,
         force_close=True,
@@ -366,7 +368,7 @@ async def main():
     logger.debug("创建Discord客户端...")
     client = discord.Client(
         intents=intents,
-        proxy=proxy_url,  # Discord客户端支持直接设置代理
+        proxy=proxy_url,
         proxy_auth=None,
         http_session=session
     )

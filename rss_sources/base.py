@@ -12,6 +12,7 @@ import hashlib
 from pathlib import Path
 import re
 import ssl
+import certifi
 
 class BaseRSSSource:
     # 文章历史记录文件
@@ -99,22 +100,30 @@ class BaseRSSSource:
             self.logger.debug(f"[{self.name}] 使用代理: {os.environ.get('HTTP_PROXY')}")
             
             # 创建SSL上下文
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
             
             # 创建connector
             connector = aiohttp.TCPConnector(
-                ssl=False  # 只使用这一个参数来禁用SSL验证
+                ssl=ssl_context,
+                force_close=True,
+                enable_cleanup_closed=True
             )
             
-            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            async with aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                trust_env=True
+            ) as session:
                 headers = self.get_headers()
                 self.logger.debug(f"[{self.name}] 请求头: {headers}")
                 
                 try:
                     self.logger.debug(f"[{self.name}] 开始发送请求...")
-                    async with session.get(self.url, headers=headers, proxy=os.environ.get('HTTP_PROXY')) as response:
+                    async with session.get(
+                        self.url,
+                        headers=headers,
+                        proxy=os.environ.get('HTTP_PROXY')
+                    ) as response:
                         self.logger.debug(f"[{self.name}] 收到响应: status={response.status}")
                         
                         if response.status != 200:
