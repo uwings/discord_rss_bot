@@ -16,13 +16,39 @@ from rss_sources.config import RSSConfig
 from rss_sources.base import BaseRSSSource
 from typing import List, Dict
 import ssl
+from discord.http import HTTPClient
 
-# 设置SSL证书路径
-os.environ['SSL_CERT_FILE'] = certifi.where()
+# 重写Discord的HTTP类
+class CustomHTTPClient(HTTPClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # 创建自定义SSL上下文
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # 创建connector
+        self._connector = aiohttp.TCPConnector(
+            ssl=ssl_context,
+            force_close=True,
+            enable_cleanup_closed=True,
+            limit=10
+        )
+        
+        # 创建session
+        self.__session = aiohttp.ClientSession(
+            connector=self._connector,
+            timeout=aiohttp.ClientTimeout(total=60),
+            trust_env=True
+        )
+
+# 修改Discord的HTTP类
+discord.http.HTTPClient = CustomHTTPClient
 
 # 设置日志
 logging.basicConfig(
-    level=logging.DEBUG,  # 改为DEBUG级别以获取更多信息
+    level=logging.DEBUG,
     format='%(asctime)s %(levelname)-8s [%(name)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
@@ -331,65 +357,15 @@ async def process_rss_feeds(config: RSSConfig):
 
 async def main():
     """主函数"""
-    global client  # 声明为全局变量，因为在其他函数中也需要使用
+    global client
     
     # 创建Discord客户端
     intents = discord.Intents.default()
-    
-    # 创建超时配置
-    timeout = aiohttp.ClientTimeout(
-        total=60,      # 增加总超时时间
-        connect=20,    # 增加连接超时
-        sock_read=30,  # 读取超时
-        sock_connect=20  # 添加socket连接超时
-    )
-    
-    # 创建connector
-    connector = aiohttp.TCPConnector(
-        ssl=False,  # 完全禁用SSL验证
-        force_close=True,
-        enable_cleanup_closed=True,
-        limit=10
-    )
-    
-    logger.debug("创建aiohttp会话...")
-    session = LoggedClientSession(
-        connector=connector,
-        timeout=timeout,
-        trust_env=True  # 这样会自动使用环境变量中的代理设置
-    )
-    logger.debug(f"aiohttp会话创建完成: timeout={timeout}")
-    
-    # 创建Discord客户端
-    logger.debug("创建Discord客户端...")
     client = discord.Client(
         intents=intents,
         proxy=proxy_url,
         proxy_auth=None
     )
-    
-    # 直接修改Discord的HTTP会话配置
-    client.http.proxy = proxy_url
-    client.http.proxy_auth = None
-    
-    # 创建一个新的session给Discord使用
-    discord_connector = aiohttp.TCPConnector(
-        ssl=False,  # 完全禁用SSL验证
-        force_close=True,
-        enable_cleanup_closed=True,
-        limit=10
-    )
-    
-    discord_session = aiohttp.ClientSession(
-        connector=discord_connector,
-        timeout=timeout,
-        trust_env=True
-    )
-    
-    # 替换Discord的HTTP会话
-    client.http._HTTPClient__session = discord_session
-    
-    logger.debug("Discord客户端创建完成")
     
     @client.event
     async def on_ready():
@@ -408,11 +384,6 @@ async def main():
     except Exception as e:
         logger.error(f"Discord客户端启动失败: {str(e)}", exc_info=True)
         raise
-    finally:
-        # 确保会话被正确关闭
-        if not session.closed:
-            await session.close()
-            logger.debug("aiohttp会话已关闭")
 
 # 创建翻译器
 translator = Translator(to_lang="zh", from_lang="en", provider="mymemory")
