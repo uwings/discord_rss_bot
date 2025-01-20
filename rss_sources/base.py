@@ -99,12 +99,9 @@ class BaseRSSSource:
             self.logger.debug(f"[{self.name}] 开始获取RSS: {self.url}")
             self.logger.debug(f"[{self.name}] 使用代理: {os.environ.get('HTTP_PROXY')}")
             
-            # 创建SSL上下文
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-            
             # 创建connector
             connector = aiohttp.TCPConnector(
-                ssl=ssl_context,
+                ssl=False,  # 禁用SSL验证
                 force_close=True,
                 enable_cleanup_closed=True
             )

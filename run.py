@@ -344,12 +344,9 @@ async def main():
         sock_connect=20  # 添加socket连接超时
     )
     
-    # 创建SSL上下文
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
-    
     # 创建connector
     connector = ProxyConnector(
-        ssl=ssl_context,
+        ssl=False,  # 禁用SSL验证
         limit=10,
         ttl_dns_cache=300,
         force_close=True,
@@ -369,9 +366,18 @@ async def main():
     client = discord.Client(
         intents=intents,
         proxy=proxy_url,
-        proxy_auth=None,
-        http_session=session
+        proxy_auth=None
     )
+    
+    # 直接修改Discord的HTTP会话配置
+    client.http.proxy = proxy_url
+    client.http.proxy_auth = None
+    
+    # 创建一个新的session给Discord使用
+    discord_connector = aiohttp.TCPConnector(ssl=False)
+    discord_session = aiohttp.ClientSession(connector=discord_connector)
+    client.http._HTTPClient__session = discord_session
+    
     logger.debug("Discord客户端创建完成")
     
     @client.event
@@ -396,6 +402,9 @@ async def main():
         if not session.closed:
             await session.close()
             logger.debug("aiohttp会话已关闭")
+        if not discord_session.closed:
+            await discord_session.close()
+            logger.debug("Discord会话已关闭")
 
 # 创建翻译器
 translator = Translator(to_lang="zh", from_lang="en", provider="mymemory")
