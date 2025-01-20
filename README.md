@@ -73,14 +73,14 @@ DISCORD_TOKEN=你的Bot Token
 
 研发环境（默认）：
 ```bash
-python discord_rss_bot.py
+python run.py
 # 或
-python discord_rss_bot.py --env dev
+python run.py --env dev
 ```
 
 生产环境：
 ```bash
-python discord_rss_bot.py --env prod
+python run.py --env prod
 ```
 
 2. 机器人会自动：

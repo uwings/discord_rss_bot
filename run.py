@@ -6,6 +6,7 @@ import logging
 import importlib
 import inspect
 import aiohttp
+import argparse
 from pathlib import Path
 from datetime import datetime
 from translate import Translator
@@ -13,6 +14,19 @@ from dotenv import load_dotenv
 from rss_sources.config import RSSConfig
 from rss_sources.base import BaseRSSSource
 from typing import List, Dict
+
+# 解析命令行参数
+parser = argparse.ArgumentParser(description='Discord RSS Bot')
+parser.add_argument('--env', type=str, default='dev', choices=['dev', 'prod'], help='运行环境 (dev/prod)')
+args = parser.parse_args()
+
+# 根据环境设置代理
+if args.env == 'dev':
+    os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
+    os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
+else:  # prod
+    os.environ['HTTP_PROXY'] = 'http://192.168.5.107:7890'
+    os.environ['HTTPS_PROXY'] = 'http://192.168.5.107:7890'
 
 # 加载环境变量
 load_dotenv()
