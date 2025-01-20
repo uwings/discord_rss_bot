@@ -20,6 +20,7 @@ from aiohttp import ClientTimeout
 from aiohttp.client_exceptions import ClientError
 from discord.http import HTTPClient
 from dns_resolver import dns_resolver
+from urllib.parse import urlparse
 
 class CustomHTTPClient(HTTPClient):
     def __init__(self, *args, **kwargs):
@@ -64,16 +65,23 @@ class CustomHTTPClient(HTTPClient):
             try:
                 # 获取解析后的URL
                 original_url = str(route.url)
-                resolved_url = dns_resolver.get_discord_api_url(route.path)
-                route.url = resolved_url
+                discord_ip = dns_resolver.get_discord_ip()
                 
-                # 添加Host header
+                # 构建使用IP的URL
+                parsed_url = urlparse(original_url)
+                ip_url = f"https://{discord_ip}{parsed_url.path}"
+                if parsed_url.query:
+                    ip_url += f"?{parsed_url.query}"
+                route.url = ip_url
+                
+                # 添加必要的headers
                 headers = kwargs.get('headers', {})
-                headers['Host'] = 'discord.com'
+                headers['Host'] = 'discord.com'  # 保持原始Host header
                 kwargs['headers'] = headers
                 
-                logger.debug(f"使用解析后的URL: {resolved_url} (原始URL: {original_url})")
+                logger.debug(f"使用IP地址发起请求: {ip_url} (原始URL: {original_url})")
                 return await super().request(route, **kwargs)
+                
             except asyncio.TimeoutError as e:
                 last_error = e
                 logger.warning(f"请求超时，第 {attempt + 1} 次重试...")

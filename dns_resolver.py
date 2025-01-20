@@ -1,7 +1,7 @@
 import asyncio
 import aiodns
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 import socket
 import ssl
 import time
@@ -40,6 +40,7 @@ class DNSResolver:
         self._resolver = None
         self._resolved_hosts = {}
         self._current_dns_index = 0
+        self.last_resolved = None
     
     async def _init_resolver(self):
         """初始化DNS解析器"""
@@ -87,6 +88,7 @@ class DNSResolver:
             else:
                 logger.warning(f"无法解析 {hostname}")
         
+        self.last_resolved = datetime.now()
         return resolved
     
     def get_discord_api_url(self, path: str = '') -> str:
@@ -101,6 +103,34 @@ class DNSResolver:
     def current_dns_server(self) -> str:
         """获取当前使用的DNS服务器"""
         return self.TRUSTED_DNS_SERVERS[self._current_dns_index]
+
+    def get_discord_ip(self):
+        """获取Discord的IP地址"""
+        if not self._resolved_hosts:
+            raise RuntimeError("DNS解析尚未完成，请先调用resolve_discord_hosts()")
+        
+        # 返回discord.com的IP地址
+        discord_ip = self._resolved_hosts.get('discord.com')
+        if not discord_ip:
+            raise RuntimeError("未找到Discord的IP地址")
+            
+        return discord_ip
+        
+    async def resolve_host(self, host: str) -> str:
+        """解析单个主机名"""
+        for dns_server in self.TRUSTED_DNS_SERVERS:
+            try:
+                logging.info(f"使用DNS服务器: {dns_server}")
+                resolver = aiodns.DNSResolver(nameservers=[dns_server])
+                result = await resolver.query(host, 'A')
+                if result and result[0].host:
+                    ip = result[0].host
+                    logging.info(f"已解析 {host} -> {ip}")
+                    return ip
+            except Exception as e:
+                logging.warning(f"使用DNS服务器 {dns_server} 解析 {host} 失败: {str(e)}")
+                continue
+        raise RuntimeError(f"无法解析主机名: {host}")
 
 # 创建全局实例
 dns_resolver = DNSResolver() 
