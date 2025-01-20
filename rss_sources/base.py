@@ -99,14 +99,9 @@ class BaseRSSSource:
             self.logger.debug(f"[{self.name}] 开始获取RSS: {self.url}")
             self.logger.debug(f"[{self.name}] 使用代理: {os.environ.get('HTTP_PROXY')}")
             
-            # 创建自定义SSL上下文
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-            
             # 创建connector
             connector = aiohttp.TCPConnector(
-                ssl=ssl_context,
+                ssl=False,  # 完全禁用SSL验证
                 force_close=True,
                 enable_cleanup_closed=True,
                 limit=10
@@ -125,7 +120,8 @@ class BaseRSSSource:
                     async with session.get(
                         self.url,
                         headers=headers,
-                        proxy=os.environ.get('HTTP_PROXY')
+                        proxy=os.environ.get('HTTP_PROXY'),
+                        verify_ssl=False  # 在请求级别也禁用SSL验证
                     ) as response:
                         self.logger.debug(f"[{self.name}] 收到响应: status={response.status}")
                         

@@ -344,18 +344,12 @@ async def main():
         sock_connect=20  # 添加socket连接超时
     )
     
-    # 创建自定义SSL上下文
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-    
     # 创建connector
-    connector = ProxyConnector(
-        limit=10,
-        ttl_dns_cache=300,
+    connector = aiohttp.TCPConnector(
+        ssl=False,  # 完全禁用SSL验证
         force_close=True,
         enable_cleanup_closed=True,
-        ssl=ssl_context
+        limit=10
     )
     
     logger.debug("创建aiohttp会话...")
@@ -371,16 +365,29 @@ async def main():
     client = discord.Client(
         intents=intents,
         proxy=proxy_url,
-        proxy_auth=None,
-        connector=connector  # 使用相同的connector
+        proxy_auth=None
     )
     
     # 直接修改Discord的HTTP会话配置
     client.http.proxy = proxy_url
     client.http.proxy_auth = None
     
+    # 创建一个新的session给Discord使用
+    discord_connector = aiohttp.TCPConnector(
+        ssl=False,  # 完全禁用SSL验证
+        force_close=True,
+        enable_cleanup_closed=True,
+        limit=10
+    )
+    
+    discord_session = aiohttp.ClientSession(
+        connector=discord_connector,
+        timeout=timeout,
+        trust_env=True
+    )
+    
     # 替换Discord的HTTP会话
-    client.http._HTTPClient__session = session  # 使用相同的session
+    client.http._HTTPClient__session = discord_session
     
     logger.debug("Discord客户端创建完成")
     
