@@ -224,11 +224,18 @@ class BaseRSSSource:
             await self.handle_error(f"Parse entry error: {str(e)}")
             return {}
     
-    def get_entry_id(self, entry: Dict) -> str:
+    def get_entry_id(self, entry) -> str:
         """生成文章的唯一标识"""
-        # 使用标题和链接的组合作为唯一标识
-        id_str = f"{entry.get('link', '')}{entry.get('title', '')}"
-        return hashlib.md5(id_str.encode()).hexdigest()
+        try:
+            # 获取标题和链接
+            title = getattr(entry, 'title', '') if not isinstance(entry, dict) else entry.get('title', '')
+            link = getattr(entry, 'link', '') if not isinstance(entry, dict) else entry.get('link', '')
+            # 使用标题和链接的组合作为唯一标识
+            id_str = f"{link}{title}"
+            return hashlib.md5(id_str.encode()).hexdigest()
+        except Exception as e:
+            self.logger.error(f"生成文章ID出错: {str(e)}")
+            return hashlib.md5(str(datetime.now().timestamp()).encode()).hexdigest()
         
     async def should_post_entry(self, entry) -> bool:
         """判断是否应该发送这篇文章"""
@@ -237,35 +244,24 @@ class BaseRSSSource:
             if isinstance(entry, dict):
                 if not entry.get('title') or not entry.get('link'):
                     return False
-                    
-                # 检查是否已发送过
-                entry_id = self.get_entry_id(entry)
-                if entry_id in self.history:
-                    self.logger.info(f"跳过已发送文章：{entry.get('title')}")
+            else:
+                if not hasattr(entry, 'title') or not hasattr(entry, 'link'):
                     return False
                     
-                # 检查发布时间
-                published_time = None
+            # 检查是否已发送过
+            entry_id = self.get_entry_id(entry)
+            if entry_id in self.history:
+                self.logger.info(f"跳过已发送文章：{getattr(entry, 'title', '') if not isinstance(entry, dict) else entry.get('title', '')}")
+                return False
+                
+            # 检查发布时间
+            published_time = None
+            if isinstance(entry, dict):
                 if entry.get('published_parsed'):
                     published_time = entry['published_parsed']
                 elif entry.get('updated_parsed'):
                     published_time = entry['updated_parsed']
             else:
-                if not getattr(entry, 'title', None) or not getattr(entry, 'link', None):
-                    return False
-                    
-                # 检查是否已发送过
-                entry_data = {
-                    'title': getattr(entry, 'title', ''),
-                    'link': getattr(entry, 'link', '')
-                }
-                entry_id = self.get_entry_id(entry_data)
-                if entry_id in self.history:
-                    self.logger.info(f"跳过已发送文章：{getattr(entry, 'title', '')}")
-                    return False
-                    
-                # 检查发布时间
-                published_time = None
                 if hasattr(entry, 'published_parsed'):
                     published_time = entry.published_parsed
                 elif hasattr(entry, 'updated_parsed'):
@@ -277,26 +273,35 @@ class BaseRSSSource:
                 entry_time = datetime(*published_time[:6])
                 time_diff = now - entry_time
                 if time_diff.total_seconds() > 72 * 3600:
-                    self.logger.info(f"跳过过期文章：{entry.get('title') if isinstance(entry, dict) else getattr(entry, 'title', '')}")
+                    self.logger.info(f"跳过过期文章：{getattr(entry, 'title', '') if not isinstance(entry, dict) else entry.get('title', '')}")
                     return False
                     
             return True
         except Exception as e:
-            await self.handle_error(f"Check entry error: {str(e)}")
+            self.logger.error(f"检查文章是否应该发送时出错: {str(e)}")
             return False
             
-    async def mark_as_sent(self, entry: Dict):
+    async def mark_as_sent(self, entry) -> None:
         """标记文章为已发送"""
         try:
+            # 获取文章信息
+            title = getattr(entry, 'title', '') if not isinstance(entry, dict) else entry.get('title', '')
+            link = getattr(entry, 'link', '') if not isinstance(entry, dict) else entry.get('link', '')
             entry_id = self.get_entry_id(entry)
+            
+            # 更新历史记录
             self.history[entry_id] = {
-                'title': entry.get('title'),
-                'link': entry.get('link'),
-                'timestamp': datetime.now().timestamp()
+                'title': title,
+                'link': link,
+                'timestamp': datetime.now().timestamp(),
+                'source': self.name
             }
+            
+            # 保存到文件
             self.__class__.save_history(self.history)
+            self.logger.info(f"已标记文章为已发送: {title}")
         except Exception as e:
-            await self.handle_error(f"Mark as sent error: {str(e)}")
+            self.logger.error(f"标记文章为已发送时出错: {str(e)}")
     
     async def handle_error(self, error_msg: str):
         """错误处理，子类可以重写"""

@@ -196,32 +196,88 @@ async def setup_rss_sources() -> RSSConfig:
 
 async def process_rss_feeds(config: RSSConfig):
     """处理所有RSS源"""
+    round_count = 0
     while True:
         try:
+            round_count += 1
+            total_articles = 0
+            processed_articles = 0
+            expired_articles = 0
+            duplicate_articles = 0
+            
+            logger.info(f"开始第 {round_count} 轮RSS处理...")
+            
             for source in config.get_sources():
                 try:
                     feed = await source.fetch_feed()
                     if feed and hasattr(feed, 'entries'):
+                        total_articles += len(feed.entries)
                         for entry in feed.entries:
                             try:
                                 # 获取标题
                                 title = getattr(entry, 'title', 'No Title') if not isinstance(entry, dict) else entry.get('title', 'No Title')
                                 logging.info(f"处理来自 {source.name} 的文章: {title}")
                                 
-                                if await source.should_post_entry(entry):
-                                    parsed_entry = await source.parse_entry(entry)
-                                    if parsed_entry:
-                                        for channel_id in source.channel_ids:
+                                # 检查是否过期
+                                published_time = None
+                                if isinstance(entry, dict):
+                                    if entry.get('published_parsed'):
+                                        published_time = entry['published_parsed']
+                                    elif entry.get('updated_parsed'):
+                                        published_time = entry['updated_parsed']
+                                else:
+                                    if hasattr(entry, 'published_parsed'):
+                                        published_time = entry.published_parsed
+                                    elif hasattr(entry, 'updated_parsed'):
+                                        published_time = entry.updated_parsed
+                                
+                                if published_time:
+                                    now = datetime.now()
+                                    entry_time = datetime(*published_time[:6])
+                                    time_diff = now - entry_time
+                                    if time_diff.total_seconds() > 72 * 3600:
+                                        logging.info(f"跳过过期文章：{title}")
+                                        expired_articles += 1
+                                        continue
+                                
+                                # 检查是否重复
+                                entry_id = source.get_entry_id(entry)
+                                if entry_id in source.history:
+                                    logging.info(f"跳过重复文章 [{source.name}]: {title}")
+                                    duplicate_articles += 1
+                                    continue
+                                
+                                # 处理新文章
+                                parsed_entry = await source.parse_entry(entry)
+                                if parsed_entry:
+                                    success = True
+                                    for channel_id in source.channel_ids:
+                                        try:
                                             await send_to_discord(int(channel_id), parsed_entry)
                                             logging.info(f"已发送文章到频道 {channel_id}: {title}")
-                                else:
-                                    logging.info(f"跳过已发送文章 [{source.name}]: {title}")
+                                        except Exception as e:
+                                            success = False
+                                            logging.error(f"发送文章到频道 {channel_id} 失败: {str(e)}")
+                                    
+                                    if success:
+                                        await source.mark_as_sent(entry)
+                                        processed_articles += 1
+                                        
                             except Exception as e:
                                 logging.error(f"处理文章错误 [{source.name}] {title}: {str(e)}")
                                 continue
                 except Exception as e:
                     logging.error(f"处理RSS源 {source.name} 时出错: {str(e)}")
                     continue
+                    
+            # 输出本轮处理的统计信息
+            logger.info(f"第 {round_count} 轮RSS处理完成！统计信息：")
+            logger.info(f"- 总文章数：{total_articles}")
+            logger.info(f"- 新发送文章：{processed_articles}")
+            logger.info(f"- 过期文章：{expired_articles}")
+            logger.info(f"- 重复文章：{duplicate_articles}")
+            logger.info("等待5分钟后开始下一轮处理...")
+            
         except Exception as e:
             logging.error(f"RSS处理主循环错误: {str(e)}")
         

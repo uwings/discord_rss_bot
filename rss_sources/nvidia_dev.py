@@ -23,22 +23,48 @@ class NvidiaDevRSS(BaseRSSSource):
         return super().clean_xml(content)
         
     async def parse_entry(self, entry) -> Dict:
-        """NVIDIA Developer特定的解析逻辑"""
-        data = await super().parse_entry(entry)
-        
-        # 清理内容中的HTML标签
-        if data.get('summary'):
-            # 移除所有HTML注释
-            summary = re.sub(r'<!--.*?-->', '', data['summary'], flags=re.DOTALL)
-            # 移除多余的空白和换行
-            summary = re.sub(r'\s+', ' ', summary)
-            # 移除HTML标签
-            soup = BeautifulSoup(summary, 'html.parser')
-            for tag in soup(['script', 'style', 'iframe']):
-                tag.decompose()
-            data['summary'] = soup.get_text(separator=' ', strip=True)
+        """NVIDIA开发者博客特定的解析逻辑"""
+        try:
+            # 获取基本信息
+            title = getattr(entry, 'title', '')
+            link = getattr(entry, 'link', '')
             
-        return data
+            # 获取摘要
+            summary = ''
+            if hasattr(entry, 'summary'):
+                summary = entry.summary
+            elif hasattr(entry, 'description'):
+                summary = entry.description
+            elif hasattr(entry, 'content'):
+                if isinstance(entry.content, list) and entry.content:
+                    summary = entry.content[0].value
+                else:
+                    summary = str(entry.content)
+                    
+            # 获取发布时间
+            published = getattr(entry, 'published', getattr(entry, 'updated', ''))
+            
+            # 清理内容中的HTML标签
+            if summary:
+                # 移除所有HTML注释
+                summary = re.sub(r'<!--.*?-->', '', summary, flags=re.DOTALL)
+                # 移除多余的空白和换行
+                summary = re.sub(r'\s+', ' ', summary)
+                # 移除HTML标签
+                soup = BeautifulSoup(summary, 'html.parser')
+                for tag in soup(['script', 'style', 'iframe']):
+                    tag.decompose()
+                summary = soup.get_text(separator=' ', strip=True)
+                
+            return {
+                'title': title,
+                'link': link,
+                'summary': summary,
+                'published': published
+            }
+        except Exception as e:
+            await self.handle_error(f"解析文章错误: {str(e)}")
+            return {}
         
     async def handle_error(self, error_msg: str):
         await super().handle_error(f"nvidia_dev RSS处理错误: {error_msg}") 
