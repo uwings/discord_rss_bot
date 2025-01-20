@@ -19,6 +19,7 @@ import ssl
 from aiohttp import ClientTimeout
 from aiohttp.client_exceptions import ClientError
 from discord.http import HTTPClient
+from dns_resolver import dns_resolver
 
 # 重写Discord的HTTP类
 class CustomHTTPClient(HTTPClient):
@@ -57,22 +58,32 @@ class CustomHTTPClient(HTTPClient):
         )
     
     async def request(self, route, **kwargs):
-        """重写请求方法，添加重试机制"""
+        """重写请求方法，使用解析后的IP地址"""
         retries = 3
         last_error = None
         
-        # 确保设置了代理
-        if 'proxy' not in kwargs and os.environ.get('HTTP_PROXY'):
-            kwargs['proxy'] = os.environ.get('HTTP_PROXY')
+        # 移除代理设置
+        kwargs.pop('proxy', None)
         
         for attempt in range(retries):
             try:
+                # 获取解析后的URL
+                original_url = str(route.url)
+                resolved_url = dns_resolver.get_discord_api_url(route.path)
+                route.url = resolved_url
+                
+                # 添加Host header
+                headers = kwargs.get('headers', {})
+                headers['Host'] = 'discord.com'
+                kwargs['headers'] = headers
+                
+                logger.debug(f"使用解析后的URL: {resolved_url} (原始URL: {original_url})")
                 return await super().request(route, **kwargs)
             except asyncio.TimeoutError as e:
                 last_error = e
                 logger.warning(f"请求超时，第 {attempt + 1} 次重试...")
                 if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # 指数退避
+                    await asyncio.sleep(2 ** attempt)
                 continue
             except ClientError as e:
                 last_error = e
@@ -404,6 +415,11 @@ async def main():
     """主函数"""
     global client
     
+    # 首先解析Discord的域名
+    logger.info("开始解析Discord域名...")
+    resolved_hosts = await dns_resolver.resolve_discord_hosts()
+    logger.info(f"域名解析结果: {resolved_hosts}")
+    
     # 创建Discord客户端
     intents = discord.Intents.default()
     
@@ -411,7 +427,7 @@ async def main():
     logger.debug("创建Discord客户端...")
     client = discord.Client(
         intents=intents,
-        proxy=proxy_url,
+        proxy=None,  # 不使用代理
         proxy_auth=None
     )
     
