@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from rss_sources.config import RSSConfig
 from rss_sources.base import BaseRSSSource
 from typing import List, Dict
+import ssl
 
 # 设置日志
 logging.basicConfig(
@@ -339,9 +340,14 @@ async def main():
         sock_connect=20  # 添加socket连接超时
     )
     
+    # 创建SSL上下文
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    
     # 创建connector
     connector = ProxyConnector(
-        ssl=False,
+        ssl=False,  # 只使用这一个参数来禁用SSL验证
         limit=10,
         ttl_dns_cache=300,
         force_close=True,
@@ -380,10 +386,14 @@ async def main():
     try:
         # 运行Discord客户端
         await client.start(token)
+    except Exception as e:
+        logger.error(f"Discord客户端启动失败: {str(e)}", exc_info=True)
+        raise
     finally:
         # 确保会话被正确关闭
-        await session.close()
-        logger.debug("aiohttp会话已关闭")
+        if not session.closed:
+            await session.close()
+            logger.debug("aiohttp会话已关闭")
 
 # 创建翻译器
 translator = Translator(to_lang="zh", from_lang="en", provider="mymemory")
