@@ -15,6 +15,14 @@ from rss_sources.config import RSSConfig
 from rss_sources.base import BaseRSSSource
 from typing import List, Dict
 
+# 设置日志
+logging.basicConfig(
+    level=logging.DEBUG,  # 改为DEBUG级别以获取更多信息
+    format='%(asctime)s %(levelname)-8s [%(name)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
 # 解析命令行参数
 parser = argparse.ArgumentParser(description='Discord RSS Bot')
 parser.add_argument('--env', type=str, default='dev', choices=['dev', 'prod'], help='运行环境 (dev/prod)')
@@ -24,12 +32,16 @@ args = parser.parse_args()
 proxy_url = None
 if args.env == 'dev':
     proxy_url = 'http://127.0.0.1:7890'
-    os.environ['HTTP_PROXY'] = proxy_url
-    os.environ['HTTPS_PROXY'] = proxy_url
 else:  # prod
     proxy_url = 'http://192.168.5.107:7890'
-    os.environ['HTTP_PROXY'] = proxy_url
-    os.environ['HTTPS_PROXY'] = proxy_url
+
+logger.info(f"当前环境: {args.env}")
+logger.info(f"使用代理: {proxy_url}")
+
+# 设置环境变量
+os.environ['HTTP_PROXY'] = proxy_url
+os.environ['HTTPS_PROXY'] = proxy_url
+logger.debug(f"环境变量设置完成: HTTP_PROXY={os.environ.get('HTTP_PROXY')}, HTTPS_PROXY={os.environ.get('HTTPS_PROXY')}")
 
 # 加载环境变量
 load_dotenv()
@@ -44,50 +56,31 @@ def load_config():
         logger.error(f"加载配置文件失败: {str(e)}")
         return None
 
-# 设置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)-8s %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
-
-# 创建Discord客户端
-intents = discord.Intents.default()
-
 # 创建自定义的aiohttp会话
-connector = aiohttp.TCPConnector(
-    ssl=False,  # 禁用SSL验证
-    limit=10,   # 限制并发连接数
-    ttl_dns_cache=300,  # DNS缓存时间
-)
+class ProxyConnector(aiohttp.TCPConnector):
+    async def _wrap_create_connection(self, *args, **kwargs):
+        try:
+            logger.debug(f"开始建立连接: args={args}, kwargs={kwargs}")
+            return await super()._wrap_create_connection(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"连接失败: {str(e)}", exc_info=True)
+            raise
 
-# 创建代理配置
-proxy_auth = None  # 如果代理需要认证，在这里设置
-timeout = aiohttp.ClientTimeout(
-    total=30,     # 总超时时间
-    connect=10,   # 连接超时
-    sock_read=30  # 读取超时
-)
-
-# 创建自定义session
-session = aiohttp.ClientSession(
-    connector=connector,
-    timeout=timeout,
-    trust_env=True,  # 信任环境变量中的代理设置
-    proxy=proxy_url
-)
-
-# 使用自定义session创建Discord客户端
-client = discord.Client(
-    intents=intents,
-    proxy=proxy_url,
-    proxy_auth=proxy_auth,
-    http_session=session
-)
-
-# 创建翻译器
-translator = Translator(to_lang="zh", from_lang="en", provider="mymemory")
+# 创建自定义session类来记录请求
+class LoggedClientSession(aiohttp.ClientSession):
+    async def _request(self, *args, **kwargs):
+        try:
+            logger.debug(f"发起请求: method={args[0]}, url={args[1]}")
+            logger.debug(f"请求参数: {kwargs}")
+            response = await super()._request(*args, **kwargs)
+            logger.debug(f"请求完成: status={response.status}")
+            return response
+        except asyncio.TimeoutError:
+            logger.error(f"请求超时: method={args[0]}, url={args[1]}")
+            raise
+        except Exception as e:
+            logger.error(f"请求失败: {str(e)}", exc_info=True)
+            raise
 
 def load_rss_sources():
     """动态加载所有RSS源类"""
@@ -331,34 +324,70 @@ async def process_rss_feeds(config: RSSConfig):
         # 等待一段时间再次获取
         await asyncio.sleep(300)  # 5分钟
 
-@client.event
-async def on_ready():
-    """Bot就绪时的处理"""
-    logger.info(f'Bot已登录为：{client.user}')
+async def main():
+    """主函数"""
+    global client  # 声明为全局变量，因为在其他函数中也需要使用
     
-    # 设置RSS源
-    config = await setup_rss_sources()
+    # 创建Discord客户端
+    intents = discord.Intents.default()
     
-    # 启动RSS处理
-    asyncio.create_task(process_rss_feeds(config))
-
-async def send_message(channel_id: str, content: str):
+    # 创建超时配置
+    timeout = aiohttp.ClientTimeout(
+        total=60,      # 增加总超时时间
+        connect=20,    # 增加连接超时
+        sock_read=30,  # 读取超时
+        sock_connect=20  # 添加socket连接超时
+    )
+    
+    # 创建connector
+    connector = ProxyConnector(
+        ssl=False,
+        limit=10,
+        ttl_dns_cache=300,
+        force_close=True,
+        enable_cleanup_closed=True
+    )
+    
+    logger.debug("创建aiohttp会话...")
+    session = LoggedClientSession(
+        connector=connector,
+        timeout=timeout,
+        trust_env=True  # 这样会自动使用环境变量中的代理设置
+    )
+    logger.debug(f"aiohttp会话创建完成: timeout={timeout}")
+    
+    # 创建Discord客户端
+    logger.debug("创建Discord客户端...")
+    client = discord.Client(
+        intents=intents,
+        proxy=proxy_url,  # Discord客户端支持直接设置代理
+        proxy_auth=None,
+        http_session=session
+    )
+    logger.debug("Discord客户端创建完成")
+    
+    @client.event
+    async def on_ready():
+        """Bot就绪时的处理"""
+        logger.info(f'Bot已登录为：{client.user}')
+        
+        # 设置RSS源
+        config = await setup_rss_sources()
+        
+        # 启动RSS处理
+        asyncio.create_task(process_rss_feeds(config))
+    
     try:
-        channel = client.get_channel(int(channel_id))
-        if not channel:
-            logging.error(f"找不到频道: {channel_id}")
-            return
-            
-        # 如果消息超过Discord限制(2000字符),分段发送
-        if len(content) > 2000:
-            chunks = [content[i:i+1900] for i in range(0, len(content), 1900)]
-            for chunk in chunks:
-                await channel.send(chunk)
-            logging.info(f"消息过长,已分{len(chunks)}段发送")
-        else:
-            await channel.send(content)
-    except Exception as e:
-        logging.error(f"发送消息错误: {str(e)}")
+        # 运行Discord客户端
+        await client.start(token)
+    finally:
+        # 确保会话被正确关闭
+        await session.close()
+        logger.debug("aiohttp会话已关闭")
 
-# 运行Discord客户端
-client.run(token)
+# 创建翻译器
+translator = Translator(to_lang="zh", from_lang="en", provider="mymemory")
+
+# 运行主函数
+if __name__ == "__main__":
+    asyncio.run(main())

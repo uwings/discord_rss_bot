@@ -94,30 +94,50 @@ class BaseRSSSource:
         """获取RSS内容"""
         try:
             timeout = aiohttp.ClientTimeout(total=30)
+            self.logger.debug(f"[{self.name}] 开始获取RSS: {self.url}")
+            self.logger.debug(f"[{self.name}] 使用代理: {os.environ.get('HTTP_PROXY')}")
+            
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 headers = self.get_headers()
-                async with session.get(self.url, headers=headers, ssl=False) as response:
-                    if response.status != 200:
-                        await self.handle_error(f"HTTP error {response.status}")
-                        return None
+                self.logger.debug(f"[{self.name}] 请求头: {headers}")
+                
+                try:
+                    self.logger.debug(f"[{self.name}] 开始发送请求...")
+                    async with session.get(self.url, headers=headers, ssl=False, proxy=os.environ.get('HTTP_PROXY')) as response:
+                        self.logger.debug(f"[{self.name}] 收到响应: status={response.status}")
                         
-                    content = await response.text()
-                    
-                    # 尝试修复常见的XML问题
-                    content = self.clean_xml(content)
-                    
-                    # 使用正确的解析器
-                    feed = feedparser.parse(content, sanitize_html=True)
-                    if feed.bozo and feed.bozo_exception:  # feedparser解析错误标志
-                        await self.handle_error(f"Parse error: {feed.bozo_exception}")
-                        return None
+                        if response.status != 200:
+                            await self.handle_error(f"HTTP error {response.status}")
+                            return None
+                            
+                        content = await response.text()
+                        self.logger.debug(f"[{self.name}] 成功获取内容，长度: {len(content)}")
                         
-                    self.last_fetch_time = datetime.now()
-                    return feed
+                        # 尝试修复常见的XML问题
+                        content = self.clean_xml(content)
+                        
+                        # 使用正确的解析器
+                        self.logger.debug(f"[{self.name}] 开始解析RSS内容...")
+                        feed = feedparser.parse(content, sanitize_html=True)
+                        
+                        if feed.bozo and feed.bozo_exception:  # feedparser解析错误标志
+                            await self.handle_error(f"Parse error: {feed.bozo_exception}")
+                            return None
+                            
+                        self.last_fetch_time = datetime.now()
+                        self.logger.debug(f"[{self.name}] RSS解析完成，条目数: {len(feed.entries) if hasattr(feed, 'entries') else 0}")
+                        return feed
+                except aiohttp.ClientError as e:
+                    self.logger.error(f"[{self.name}] 请求错误: {str(e)}", exc_info=True)
+                    await self.handle_error(f"Request error: {str(e)}")
+                    return None
+                    
         except asyncio.TimeoutError:
+            self.logger.error(f"[{self.name}] 请求超时")
             await self.handle_error("Fetch timeout")
             return None
         except Exception as e:
+            self.logger.error(f"[{self.name}] 获取RSS出错: {str(e)}", exc_info=True)
             await self.handle_error(f"Fetch error: {str(e)}")
             return None
             
