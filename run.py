@@ -361,11 +361,46 @@ async def main():
     
     # 创建Discord客户端
     intents = discord.Intents.default()
+    
+    # 创建超时配置
+    timeout = aiohttp.ClientTimeout(
+        total=60,      # 增加总超时时间
+        connect=20,    # 增加连接超时
+        sock_read=30,  # 读取超时
+        sock_connect=20  # 添加socket连接超时
+    )
+    
+    # 创建SSL上下文
+    ssl_context = ssl.create_default_context(cafile="/etc/ssl/certs/ca-certificates.crt")
+    
+    # 创建connector
+    connector = aiohttp.TCPConnector(
+        ssl=ssl_context,
+        force_close=True,
+        enable_cleanup_closed=True,
+        limit=10,
+        ttl_dns_cache=300,
+        verify_ssl=True
+    )
+    
+    logger.debug("创建aiohttp会话...")
+    session = LoggedClientSession(
+        connector=connector,
+        timeout=timeout,
+        trust_env=True
+    )
+    logger.debug(f"aiohttp会话创建完成: timeout={timeout}")
+    
+    # 创建Discord客户端
+    logger.debug("创建Discord客户端...")
     client = discord.Client(
         intents=intents,
         proxy=proxy_url,
-        proxy_auth=None
+        proxy_auth=None,
+        connector=connector  # 使用相同的connector
     )
+    
+    logger.debug("Discord客户端创建完成")
     
     @client.event
     async def on_ready():
