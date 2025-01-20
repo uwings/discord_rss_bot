@@ -21,12 +21,15 @@ parser.add_argument('--env', type=str, default='dev', choices=['dev', 'prod'], h
 args = parser.parse_args()
 
 # 根据环境设置代理
+proxy_url = None
 if args.env == 'dev':
-    os.environ['HTTP_PROXY'] = 'http://127.0.0.1:7890'
-    os.environ['HTTPS_PROXY'] = 'http://127.0.0.1:7890'
+    proxy_url = 'http://127.0.0.1:7890'
+    os.environ['HTTP_PROXY'] = proxy_url
+    os.environ['HTTPS_PROXY'] = proxy_url
 else:  # prod
-    os.environ['HTTP_PROXY'] = 'http://192.168.5.107:7890'
-    os.environ['HTTPS_PROXY'] = 'http://192.168.5.107:7890'
+    proxy_url = 'http://192.168.5.107:7890'
+    os.environ['HTTP_PROXY'] = proxy_url
+    os.environ['HTTPS_PROXY'] = proxy_url
 
 # 加载环境变量
 load_dotenv()
@@ -51,7 +54,37 @@ logger = logging.getLogger(__name__)
 
 # 创建Discord客户端
 intents = discord.Intents.default()
-client = discord.Client(intents=intents)
+
+# 创建自定义的aiohttp会话
+connector = aiohttp.TCPConnector(
+    ssl=False,  # 禁用SSL验证
+    limit=10,   # 限制并发连接数
+    ttl_dns_cache=300,  # DNS缓存时间
+)
+
+# 创建代理配置
+proxy_auth = None  # 如果代理需要认证，在这里设置
+timeout = aiohttp.ClientTimeout(
+    total=30,     # 总超时时间
+    connect=10,   # 连接超时
+    sock_read=30  # 读取超时
+)
+
+# 创建自定义session
+session = aiohttp.ClientSession(
+    connector=connector,
+    timeout=timeout,
+    trust_env=True,  # 信任环境变量中的代理设置
+    proxy=proxy_url
+)
+
+# 使用自定义session创建Discord客户端
+client = discord.Client(
+    intents=intents,
+    proxy=proxy_url,
+    proxy_auth=proxy_auth,
+    http_session=session
+)
 
 # 创建翻译器
 translator = Translator(to_lang="zh", from_lang="en", provider="mymemory")
