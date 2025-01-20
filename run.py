@@ -20,6 +20,8 @@ from aiohttp import ClientTimeout
 from aiohttp.client_exceptions import ClientError
 from discord.http import HTTPClient
 from dns_resolver import dns_resolver
+from aiohttp_socks import ProxyConnector as SocksProxyConnector
+from urllib.parse import urlparse
 
 # 重写Discord的HTTP类
 class CustomHTTPClient(HTTPClient):
@@ -31,23 +33,43 @@ class CustomHTTPClient(HTTPClient):
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         
-        # 创建connector
-        self._connector = aiohttp.TCPConnector(
-            ssl=ssl_context,
-            force_close=False,  # 允许连接复用
-            enable_cleanup_closed=True,
-            limit=10,
-            ttl_dns_cache=300,
-            use_dns_cache=True,
-            verify_ssl=False
-        )
+        # 解析代理URL
+        proxy_url = os.environ.get('HTTP_PROXY')
+        if proxy_url:
+            parsed = urlparse(proxy_url)
+            # 将HTTP代理转换为SOCKS5代理
+            socks_url = f"socks5://{parsed.netloc}"
+            logger.info(f"使用SOCKS5代理: {socks_url}")
+            
+            # 创建SOCKS connector
+            self._connector = SocksProxyConnector.from_url(
+                socks_url,
+                ssl=ssl_context,
+                verify_ssl=False,
+                force_close=False,
+                enable_cleanup_closed=True,
+                limit=10,
+                ttl_dns_cache=300,
+                use_dns_cache=True
+            )
+        else:
+            # 如果没有代理，使用普通connector
+            self._connector = aiohttp.TCPConnector(
+                ssl=ssl_context,
+                force_close=False,
+                enable_cleanup_closed=True,
+                limit=10,
+                ttl_dns_cache=300,
+                use_dns_cache=True,
+                verify_ssl=False
+            )
         
         # 设置更长的超时时间
         timeout = ClientTimeout(
-            total=120,  # 总超时时间
-            connect=30,  # 连接超时
-            sock_connect=30,  # socket连接超时
-            sock_read=30  # socket读取超时
+            total=120,
+            connect=30,
+            sock_connect=30,
+            sock_read=30
         )
         
         # 创建session
