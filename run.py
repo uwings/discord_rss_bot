@@ -16,6 +16,8 @@ from rss_sources.config import RSSConfig
 from rss_sources.base import BaseRSSSource
 from typing import List, Dict
 import ssl
+from aiohttp import ClientTimeout
+from aiohttp.client_exceptions import ClientError
 from discord.http import HTTPClient
 
 # 重写Discord的HTTP类
@@ -31,17 +33,58 @@ class CustomHTTPClient(HTTPClient):
         # 创建connector
         self._connector = aiohttp.TCPConnector(
             ssl=ssl_context,
-            force_close=True,
+            force_close=False,  # 允许连接复用
             enable_cleanup_closed=True,
-            limit=10
+            limit=10,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            verify_ssl=False
+        )
+        
+        # 设置更长的超时时间
+        timeout = ClientTimeout(
+            total=120,  # 总超时时间
+            connect=30,  # 连接超时
+            sock_connect=30,  # socket连接超时
+            sock_read=30  # socket读取超时
         )
         
         # 创建session
         self.__session = aiohttp.ClientSession(
             connector=self._connector,
-            timeout=aiohttp.ClientTimeout(total=60),
+            timeout=timeout,
             trust_env=True
         )
+    
+    async def request(self, route, **kwargs):
+        """重写请求方法，添加重试机制"""
+        retries = 3
+        last_error = None
+        
+        # 确保设置了代理
+        if 'proxy' not in kwargs and os.environ.get('HTTP_PROXY'):
+            kwargs['proxy'] = os.environ.get('HTTP_PROXY')
+        
+        for attempt in range(retries):
+            try:
+                return await super().request(route, **kwargs)
+            except asyncio.TimeoutError as e:
+                last_error = e
+                logger.warning(f"请求超时，第 {attempt + 1} 次重试...")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)  # 指数退避
+                continue
+            except ClientError as e:
+                last_error = e
+                logger.warning(f"请求失败，第 {attempt + 1} 次重试: {str(e)}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
+            except Exception as e:
+                logger.error(f"未预期的错误: {str(e)}")
+                raise
+        
+        raise last_error
 
 # 修改Discord的HTTP类
 discord.http.HTTPClient = CustomHTTPClient
