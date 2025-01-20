@@ -373,10 +373,27 @@ async def main():
     client.http.proxy = proxy_url
     client.http.proxy_auth = None
     
-    # 创建一个新的session给Discord使用
-    discord_connector = aiohttp.TCPConnector(ssl=False)
-    discord_session = aiohttp.ClientSession(connector=discord_connector)
+    # 创建一个完全禁用SSL验证的connector给Discord使用
+    discord_connector = aiohttp.TCPConnector(
+        ssl=False,
+        force_close=True,
+        enable_cleanup_closed=True,
+        limit=10
+    )
+    
+    # 创建新的session给Discord使用，完全禁用SSL验证
+    discord_session = aiohttp.ClientSession(
+        connector=discord_connector,
+        timeout=timeout,
+        trust_env=True
+    )
+    
+    # 替换Discord的HTTP会话
     client.http._HTTPClient__session = discord_session
+    
+    # 修改Discord的HTTP配置
+    client.http.proxy = proxy_url
+    client.http.proxy_auth = None
     
     logger.debug("Discord客户端创建完成")
     

@@ -103,7 +103,8 @@ class BaseRSSSource:
             connector = aiohttp.TCPConnector(
                 ssl=False,  # 禁用SSL验证
                 force_close=True,
-                enable_cleanup_closed=True
+                enable_cleanup_closed=True,
+                limit=10
             )
             
             async with aiohttp.ClientSession(
@@ -119,7 +120,8 @@ class BaseRSSSource:
                     async with session.get(
                         self.url,
                         headers=headers,
-                        proxy=os.environ.get('HTTP_PROXY')
+                        proxy=os.environ.get('HTTP_PROXY'),
+                        ssl=False  # 在请求级别也禁用SSL验证
                     ) as response:
                         self.logger.debug(f"[{self.name}] 收到响应: status={response.status}")
                         
