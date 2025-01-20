@@ -26,6 +26,7 @@ ENV/
 env/
 
 # IDE
+.htaccess
 .idea/
 .vscode/
 *.swp
