@@ -100,7 +100,7 @@ class BaseRSSSource:
             self.logger.debug(f"[{self.name}] 使用代理: {os.environ.get('HTTP_PROXY')}")
             
             # 创建SSL上下文
-            ssl_context = ssl.create_default_context(cafile="/etc/ssl/certs/ca-certificates.crt")
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
             
             # 创建connector
             connector = aiohttp.TCPConnector(
@@ -108,8 +108,7 @@ class BaseRSSSource:
                 force_close=True,
                 enable_cleanup_closed=True,
                 limit=10,
-                ttl_dns_cache=300,
-                verify_ssl=True
+                ttl_dns_cache=300
             )
             
             async with aiohttp.ClientSession(

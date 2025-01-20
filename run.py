@@ -72,7 +72,9 @@ logger.info(f"使用代理: {proxy_url}")
 # 设置环境变量
 os.environ['HTTP_PROXY'] = proxy_url
 os.environ['HTTPS_PROXY'] = proxy_url
+os.environ['SSL_CERT_FILE'] = certifi.where()  # 设置证书路径
 logger.debug(f"环境变量设置完成: HTTP_PROXY={os.environ.get('HTTP_PROXY')}, HTTPS_PROXY={os.environ.get('HTTPS_PROXY')}")
+logger.debug(f"证书路径: {os.environ.get('SSL_CERT_FILE')}")
 
 # 加载环境变量
 load_dotenv()
@@ -364,14 +366,14 @@ async def main():
     
     # 创建超时配置
     timeout = aiohttp.ClientTimeout(
-        total=60,      # 增加总超时时间
-        connect=20,    # 增加连接超时
-        sock_read=30,  # 读取超时
-        sock_connect=20  # 添加socket连接超时
+        total=60,
+        connect=20,
+        sock_read=30,
+        sock_connect=20
     )
     
     # 创建SSL上下文
-    ssl_context = ssl.create_default_context(cafile="/etc/ssl/certs/ca-certificates.crt")
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
     
     # 创建connector
     connector = aiohttp.TCPConnector(
@@ -379,8 +381,7 @@ async def main():
         force_close=True,
         enable_cleanup_closed=True,
         limit=10,
-        ttl_dns_cache=300,
-        verify_ssl=True
+        ttl_dns_cache=300
     )
     
     logger.debug("创建aiohttp会话...")
@@ -397,7 +398,7 @@ async def main():
         intents=intents,
         proxy=proxy_url,
         proxy_auth=None,
-        connector=connector  # 使用相同的connector
+        http_session=session  # 使用已配置的session
     )
     
     logger.debug("Discord客户端创建完成")
