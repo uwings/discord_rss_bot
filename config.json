@@ -1,0 +1,53 @@
+{
+    "default_channel_id": "1330170576513273896",
+    "sources": {
+        "openai": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "google_ai": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "nvidia_cn": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "nvidia_dev": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "mit": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "deepmind": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "deepmind_blog": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "stability": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "hugging_face": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "techcrunch_ai": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "geekpark": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        },
+        "qbitai": {
+            "channel_ids": ["1330170576513273896"],
+            "enabled": true
+        }
+    }
+} 
