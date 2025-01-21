@@ -104,17 +104,19 @@ class DNSResolver:
         """获取当前使用的DNS服务器"""
         return self.TRUSTED_DNS_SERVERS[self._current_dns_index]
 
-    def get_discord_ip(self):
+    def get_discord_ip(self) -> str:
         """获取Discord的IP地址"""
         if not self._resolved_hosts:
             raise RuntimeError("DNS解析尚未完成，请先调用resolve_discord_hosts()")
         
         # 返回discord.com的IP地址
-        discord_ip = self._resolved_hosts.get('discord.com')
-        if not discord_ip:
+        discord_host = self._resolved_hosts.get('discord.com')
+        if not discord_host:
             raise RuntimeError("未找到Discord的IP地址")
             
-        return discord_ip
+        if isinstance(discord_host, ResolvedHost):
+            return discord_host.ip
+        return discord_host  # 如果已经是字符串形式的IP
         
     async def resolve_host(self, host: str) -> str:
         """解析单个主机名"""

@@ -17,8 +17,9 @@ from rss_sources.base import BaseRSSSource
 from typing import List, Dict
 import ssl
 from aiohttp import ClientTimeout
-from aiohttp.client_exceptions import ClientError
-from discord.http import HTTPClient
+from aiohttp.client_exceptions import ClientError, ClientConnectorError
+from discord.http import HTTPClient, Route
+from discord.errors import DiscordServerError
 from dns_resolver import dns_resolver
 from urllib.parse import urlparse
 
@@ -55,49 +56,60 @@ class CustomHTTPClient(HTTPClient):
             connector=self._connector,
             timeout=timeout
         )
-    
-    async def request(self, route, **kwargs):
-        """重写请求方法，使用解析后的IP地址"""
+
+    async def request(self, route: Route, **kwargs):
+        """重写请求方法，使用IP直接请求"""
         retries = 3
         last_error = None
         
         for attempt in range(retries):
             try:
-                # 获取解析后的URL
-                original_url = str(route.url)
                 discord_ip = dns_resolver.get_discord_ip()
+                logger.debug(f"获取到Discord IP: {discord_ip}")
                 
                 # 构建使用IP的URL
-                parsed_url = urlparse(original_url)
-                ip_url = f"https://{discord_ip}{parsed_url.path}"
-                if parsed_url.query:
-                    ip_url += f"?{parsed_url.query}"
-                route.url = ip_url
+                url = f"https://{discord_ip}/api/v10{route.path}"
+                logger.debug(f"发起请求: URL={url}, method={route.method}")
                 
                 # 添加必要的headers
-                headers = kwargs.get('headers', {})
-                headers['Host'] = 'discord.com'  # 保持原始Host header
+                headers = kwargs.get('headers', {}) or {}
+                headers['Host'] = 'discord.com'
+                headers['Connection'] = 'keep-alive'
                 kwargs['headers'] = headers
                 
-                logger.debug(f"使用IP地址发起请求: {ip_url} (原始URL: {original_url})")
-                return await super().request(route, **kwargs)
+                logger.debug(f"请求头: {headers}")
                 
+                # 直接使用session发起请求，而不是调用父类的request方法
+                async with self.__session.request(
+                    route.method, url, **kwargs
+                ) as response:
+                    # 读取响应内容
+                    data = await response.read()
+                    logger.debug(f"收到响应: status={response.status}")
+                    
+                    # 检查响应状态
+                    if response.status >= 500:
+                        raise DiscordServerError(response, data)
+                    
+                    return data
+                    
             except asyncio.TimeoutError as e:
                 last_error = e
-                logger.warning(f"请求超时，第 {attempt + 1} 次重试...")
+                logger.warning(f"请求超时 (attempt {attempt + 1}/{retries}): {str(e)}")
                 if attempt < retries - 1:
                     await asyncio.sleep(2 ** attempt)
                 continue
-            except ClientError as e:
+            except (ClientError, ClientConnectorError) as e:
                 last_error = e
-                logger.warning(f"请求失败，第 {attempt + 1} 次重试: {str(e)}")
+                logger.warning(f"请求失败 (attempt {attempt + 1}/{retries}): {str(e)}")
                 if attempt < retries - 1:
                     await asyncio.sleep(2 ** attempt)
                 continue
             except Exception as e:
-                logger.error(f"未预期的错误: {str(e)}")
+                logger.error(f"未预期的错误: {str(e)}", exc_info=True)
                 raise
         
+        logger.error(f"所有重试都失败了: {str(last_error)}")
         raise last_error
 
 # 修改Discord的HTTP类
