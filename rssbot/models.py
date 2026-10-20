@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import html
 import re
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
+
+# 个别源摘要恰好长得像文件路径，BS4 会误报警告
+warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 
 @dataclass
