@@ -1,0 +1,88 @@
+# ===== AI 新闻 RSS Bot 配置 =====
+
+[poll]
+interval_minutes = 30          # 常驻模式下每轮间隔
+max_age_hours = 72             # 只推送 72 小时内的文章
+bootstrap = "mark"             # 首次运行历史为空时：mark=只建档不推送；catch_up=照推
+request_timeout_seconds = 20
+retention_days = 14            # 历史记录保留天数（决定去重记忆长度）
+
+[http]
+# 留空直连；需要代理时填如 "http://127.0.0.1:7890"（也可用 HTTPS_PROXY 环境变量）
+proxy = ""
+
+[translation]
+# auto  = 配置了 LLM 就用 LLM，否则用免费 Google 翻译（默认）
+# google = 始终用免费 Google 翻译
+# llm   = 始终用大模型翻译+摘要
+# none  = 不翻译
+provider = "auto"
+summary_chars = 400
+
+[llm]
+enabled = false
+base_url = "https://api.openai.com/v1"   # 任何 OpenAI 兼容端点均可（含国内服务）
+model = "gpt-4o-mini"
+# API key 在 .env 的 LLM_API_KEY 中填写
+
+# ===== 订阅源（均于 2026-10-21 实测可用）=====
+
+[[feeds]]
+name = "OpenAI"
+url = "https://openai.com/news/rss.xml"
+
+[[feeds]]
+name = "Google AI Blog"
+url = "https://blog.google/technology/ai/rss/"
+
+[[feeds]]
+name = "NVIDIA 博客"
+url = "https://blogs.nvidia.cn/feed/"
+lang = "zh"
+
+[[feeds]]
+name = "NVIDIA Developer"
+url = "https://developer.nvidia.cn/zh-cn/blog/feed"
+lang = "zh"
+
+[[feeds]]
+name = "MIT News AI"
+url = "https://news.mit.edu/rss/topic/artificial-intelligence2"
+
+[[feeds]]
+name = "Google DeepMind"
+url = "https://deepmind.google/blog/rss.xml"
+
+[[feeds]]
+name = "Hugging Face"
+url = "https://huggingface.co/blog/feed.xml"
+
+[[feeds]]
+name = "TechCrunch AI"
+url = "https://techcrunch.com/tag/ai/feed"
+
+[[feeds]]
+name = "MIT Technology Review"
+url = "https://www.technologyreview.com/topic/artificial-intelligence/feed"
+
+[[feeds]]
+name = "VentureBeat AI"
+url = "https://venturebeat.com/category/ai/feed/"
+
+[[feeds]]
+name = "The Verge AI"
+url = "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
+
+[[feeds]]
+name = "Synced（机器之心）"
+url = "https://syncedreview.com/feed/"
+
+[[feeds]]
+name = "极客公园"
+url = "https://www.geekpark.net/rss"
+lang = "zh"
+
+[[feeds]]
+name = "量子位"
+url = "https://www.qbitai.com/category/%E8%B5%84%E8%AE%AF/feed"
+lang = "zh"
