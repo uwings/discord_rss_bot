@@ -31,6 +31,7 @@ class PollConfig:
     bootstrap: str = "mark"
     request_timeout_seconds: int = 20
     retention_days: int = 14
+    enrich_summaries: bool = True  # feed 无摘要时回源文章页提取导语
 
 
 @dataclass(frozen=True)

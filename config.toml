@@ -6,6 +6,7 @@ max_age_hours = 72             # 只推送 72 小时内的文章
 bootstrap = "mark"             # 首次运行历史为空时：mark=只建档不推送；catch_up=照推
 request_timeout_seconds = 20
 retention_days = 14            # 历史记录保留天数（决定去重记忆长度）
+enrich_summaries = true        # feed 无摘要时（如 Hugging Face）回源文章页提取导语
 
 [http]
 # 留空直连；需要代理时填如 "http://127.0.0.1:7890"（也可用 HTTPS_PROXY 环境变量）

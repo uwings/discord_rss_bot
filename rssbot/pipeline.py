@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 
 from .config import AppConfig
+from .enrich import enrich_summary
 from .feeds import build_client, fetch_all
 from .history import History
 from .models import Article, has_chinese, utc_now
@@ -106,6 +107,10 @@ async def run_once(
             if bootstrap:
                 history.mark(article.key, title=article.title, link=article.link, source=article.source)
                 continue
+
+            # feed 中没有摘要时（如 Hugging Face），回源文章页提取导语
+            if cfg.poll.enrich_summaries and not article.raw_summary:
+                await enrich_summary(client, article)
 
             if cfg.effective_provider != "none" and _needs_translation(article):
                 await _translate_article(article, translator)

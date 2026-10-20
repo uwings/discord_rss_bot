@@ -78,6 +78,7 @@ Linux/macOS 用 cron 同理：`*/30 * * * * cd /path/rssbot && .venv/bin/python 
 | `poll.max_age_hours` | 文章时效窗口（默认 72 小时） |
 | `poll.bootstrap` | `mark`=首次只建档不推送（默认）；`catch_up`=首次照推 |
 | `poll.retention_days` | 去重历史保留天数（默认 14 天） |
+| `poll.enrich_summaries` | feed 无摘要时（如 Hugging Face）回源文章页自动提取导语（默认开） |
 | `translation.provider` | `auto` / `google` / `llm` / `none` |
 | `llm.*` | OpenAI 兼容端点地址与模型名，key 放 `.env` |
 | `[[feeds]]` | 订阅源；`lang = "zh"` 的源跳过翻译 |
