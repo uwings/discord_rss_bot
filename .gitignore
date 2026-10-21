@@ -21,5 +21,6 @@ env/
 # 密钥与运行数据
 .env
 !.env.example
+config.local.toml
 data/
 *.log

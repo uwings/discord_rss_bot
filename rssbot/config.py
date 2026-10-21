@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import os
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+try:  # Python 3.11+
+    import tomllib
+except ModuleNotFoundError:  # 3.10（ITX Ubuntu 22.04）
+    import tomli as tomllib
 
 from dotenv import load_dotenv
 
@@ -136,6 +140,17 @@ class AppConfig:
         return self.llm.enabled and bool(self.llm_api_key)
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """递归合并 TOML 段（override 覆盖 base；[[feeds]] 等列表整体替换）。"""
+    result = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 def _section(raw: dict, name: str) -> dict:
     return raw.get(name, {}) or {}
 
@@ -174,6 +189,12 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
     with open(config_path, "rb") as f:
         raw = tomllib.load(f)
 
+    # 机器本地覆盖（config.local.toml，不进 git）：ITX 上用它改路径/代理/频道等
+    local_path = config_path.with_name("config.local.toml")
+    if local_path.exists():
+        with open(local_path, "rb") as f:
+            raw = _deep_merge(raw, tomllib.load(f))
+
     poll = PollConfig(**_section(raw, "poll"))
     translation = TranslationConfig(**_section(raw, "translation"))
     llm = LLMConfig(**_section(raw, "llm"))
@@ -193,7 +214,11 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
 
     feeds = [FeedConfig(**item) for item in raw.get("feeds", [])]
 
-    load_dotenv(PROJECT_ROOT / ".env")
+    # .env 优先读配置文件旁边的（部署目录自洽），否则读项目根
+    env_path = config_path.parent / ".env"
+    if not env_path.exists():
+        env_path = PROJECT_ROOT / ".env"
+    load_dotenv(env_path if env_path.exists() else None)
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
     bot_token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
     llm_api_key = os.getenv("LLM_API_KEY", "").strip() or _read_hermes_key("DEEPSEEK_API_KEY")

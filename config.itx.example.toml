@@ -1,0 +1,23 @@
+# ITX（Linux/宝塔）本地覆盖配置。
+# 用法：复制为 config.local.toml（已 gitignore），与 config.toml 同目录。
+# 只写需要覆盖的段，其余继承 config.toml。
+
+[http]
+# ITX 直连 Discord 不通，走 PC 的 Clash（PC 需开机/允许局域网代理）
+proxy = "http://192.168.5.107:7890"
+
+[bridge]
+# Bridge 与 rssbot 同在 ITX，本地调用；token 放 .env 的 BRIDGE_TOKEN
+base_url = "http://127.0.0.1:9100"
+token_file = ""
+
+[archive]
+# ITX 上 NAS 的 cifs 挂载点
+path = "/mnt/nas/jovi工作目录/briefing-archive"
+
+[bot]
+channel_id = 1330170576513273896
+
+[briefing]
+enabled = true
+time = "20:15"

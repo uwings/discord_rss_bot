@@ -169,6 +169,7 @@ def main() -> int:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(description="rssbot 3.0：共脑问答 + 每日选题编辑简报")
+    parser.add_argument("--config", default=None, help="指定 config.toml 路径（.env/config.local.toml 跟随同目录）")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("serve", help="启动 Discord 问答 Bot + 定时简报（默认命令）")
@@ -192,7 +193,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        cfg = load_config()
+        cfg = load_config(args.config)
     except Exception as exc:  # noqa: BLE001
         print(f"配置错误: {exc}", file=sys.stderr)
         return 2
