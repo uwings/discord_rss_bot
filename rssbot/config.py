@@ -211,17 +211,6 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
     briefing = BriefingConfig(**_section(raw, "briefing"))
     legacy_rss = LegacyRSSConfig(**_section(raw, "rss"))
 
-    bot_fields = set(BotConfig.__dataclass_fields__)
-    bot_raw = {k: v for k, v in _section(raw, "bot").items() if k in bot_fields}
-    # .env 兼容单频道
-    channel_env = os.getenv("DISCORD_CHANNEL_ID", "").strip()
-    if channel_env and not bot_raw.get("channel_id") and not bot_raw.get("channel_ids"):
-        bot_raw["channel_id"] = int(channel_env)
-    channel_ids_env = os.getenv("DISCORD_CHANNEL_IDS", "").strip()
-    if channel_ids_env and not bot_raw.get("channel_ids"):
-        bot_raw["channel_ids"] = tuple(int(x) for x in channel_ids_env.split(",") if x.strip())
-    bot = BotConfig(**bot_raw)
-
     if poll.bootstrap not in VALID_BOOTSTRAP:
         raise ValueError(f"poll.bootstrap 必须是 {VALID_BOOTSTRAP} 之一")
     if translation.provider not in VALID_PROVIDERS:
@@ -229,7 +218,7 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
 
     feeds = [FeedConfig(**item) for item in raw.get("feeds", [])]
 
-    # .env：依次尝试 cwd、配置文件旁、项目根（不同启动方式 cwd 不固定）
+    # .env：依次尝试 cwd、配置文件旁、项目根（不同启动方式 cwd 不固定），必须在用到环境变量之前
     for env_dir in (Path.cwd(), config_path.parent, PROJECT_ROOT):
         env_file = env_dir / ".env"
         if env_file.exists():
@@ -244,6 +233,17 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
         or _read_bridge_token(bridge.token_file)
     )
     proxy = _section(raw, "http").get("proxy", "").strip() or os.getenv("HTTPS_PROXY", "").strip()
+
+    # bot 频道白名单（TOML 优先，其次 .env 多频道/单频道）
+    bot_fields = set(BotConfig.__dataclass_fields__)
+    bot_raw = {k: v for k, v in _section(raw, "bot").items() if k in bot_fields}
+    channel_ids_env = os.getenv("DISCORD_CHANNEL_IDS", "").strip()
+    if channel_ids_env and not bot_raw.get("channel_ids"):
+        bot_raw["channel_ids"] = tuple(int(x) for x in channel_ids_env.split(",") if x.strip())
+    channel_env = os.getenv("DISCORD_CHANNEL_ID", "").strip()
+    if channel_env and not bot_raw.get("channel_id") and not bot_raw.get("channel_ids"):
+        bot_raw["channel_id"] = int(channel_env)
+    bot = BotConfig(**bot_raw)
 
     custom_data_dir = raw.get("data_dir", "").strip()
     data_dir = Path(custom_data_dir) if custom_data_dir else DEFAULT_DATA_DIR
