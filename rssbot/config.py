@@ -211,8 +211,8 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
     briefing = BriefingConfig(**_section(raw, "briefing"))
     legacy_rss = LegacyRSSConfig(**_section(raw, "rss"))
 
-    bot_raw = _section(raw, "bot")
-    bot_raw = {k: v for k, v in bot_raw.items() if k in BotConfig.__dataclass_fields__}
+    bot_fields = set(BotConfig.__dataclass_fields__)
+    bot_raw = {k: v for k, v in _section(raw, "bot").items() if k in bot_fields}
     # .env 兼容单频道
     channel_env = os.getenv("DISCORD_CHANNEL_ID", "").strip()
     if channel_env and not bot_raw.get("channel_id") and not bot_raw.get("channel_ids"):
