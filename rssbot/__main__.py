@@ -76,7 +76,8 @@ async def run_doctor(cfg) -> int:
     # 4) Discord
     print(f"  {'✅' if cfg.webhook_url else '❌'} Discord Webhook  {'已配置' if cfg.webhook_url else '未配置'}")
     print(f"  {'✅' if cfg.bot_token else '⬜'} Discord Bot Token  {'已配置（slash 问答可用）' if cfg.bot_token else '未配置（仅有定时简报）'}")
-    print(f"  {'✅' if cfg.bot.channel_id else '⚠️ '} 响应频道限制  {cfg.bot.channel_id or '未限制'}")
+    allowed = cfg.bot.allowed_channel_ids
+    print(f"  {'✅' if allowed else '⚠️ '} 响应频道限制  {sorted(allowed) if allowed else '未限制（任意频道）'}")
 
     # 5) 旧 RSS
     print(f"  ℹ️  旧 RSS 管线：{'启用' if cfg.legacy_rss.enabled else '停用（与 AGI Force 重复，用 rss 子命令手动运行）'}")

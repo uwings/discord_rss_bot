@@ -78,8 +78,10 @@ async def run_bot(cfg) -> None:
     client = discord.Client(intents=intents, proxy=cfg.proxy or None)
     tree = app_commands.CommandTree(client)
 
+    allowed_ids = cfg.bot.allowed_channel_ids
+
     def allowed(interaction: discord.Interaction) -> bool:
-        return not cfg.bot.channel_id or interaction.channel_id == cfg.bot.channel_id
+        return not allowed_ids or interaction.channel_id in allowed_ids
 
     @tree.command(name="ask", description="问共脑知识库（KC）：基于已沉淀的新闻与观点回答")
     @app_commands.describe(question="你想问的问题")
@@ -160,9 +162,10 @@ async def run_bot(cfg) -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Webhook 发送失败，改用 Bot 频道: %s", exc)
 
-        channel = client.get_channel(cfg.bot.channel_id)
+        channel_id = cfg.bot.channel_id or (next(iter(allowed_ids)) if allowed_ids else 0)
+        channel = client.get_channel(channel_id)
         if channel is None:
-            logger.error("找不到配置的频道 %s，定时简报未发送", cfg.bot.channel_id)
+            logger.error("找不到配置的频道 %s，定时简报未发送", channel_id)
             return
         embeds = [discord.Embed.from_dict(e) for e in render_embeds(briefing)]
         await channel.send(embeds=embeds[:10])

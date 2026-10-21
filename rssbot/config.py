@@ -81,7 +81,15 @@ class BriefingConfig:
 
 @dataclass(frozen=True)
 class BotConfig:
-    channel_id: int = 0          # 仅响应/推送此频道（0 表示不限制频道但需手工指定）
+    channel_id: int = 0          # 仅响应/推送此频道（兼容旧配置；0 表示不限制）
+    channel_ids: tuple[int, ...] = ()  # 允许的多个频道
+
+    @property
+    def allowed_channel_ids(self) -> frozenset[int]:
+        ids = set(self.channel_ids)
+        if self.channel_id:
+            ids.add(self.channel_id)
+        return frozenset(ids)
 
 
 @dataclass(frozen=True)
@@ -205,6 +213,13 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
 
     bot_raw = _section(raw, "bot")
     bot_raw = {k: v for k, v in bot_raw.items() if k in BotConfig.__dataclass_fields__}
+    # .env 兼容单频道
+    channel_env = os.getenv("DISCORD_CHANNEL_ID", "").strip()
+    if channel_env and not bot_raw.get("channel_id") and not bot_raw.get("channel_ids"):
+        bot_raw["channel_id"] = int(channel_env)
+    channel_ids_env = os.getenv("DISCORD_CHANNEL_IDS", "").strip()
+    if channel_ids_env and not bot_raw.get("channel_ids"):
+        bot_raw["channel_ids"] = tuple(int(x) for x in channel_ids_env.split(",") if x.strip())
     bot = BotConfig(**bot_raw)
 
     if poll.bootstrap not in VALID_BOOTSTRAP:
@@ -227,9 +242,6 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
         or _read_hermes_key("BRIDGE_TOKEN")
         or _read_bridge_token(bridge.token_file)
     )
-    channel_env = os.getenv("DISCORD_CHANNEL_ID", "").strip()
-    if channel_env and not bot.channel_id:
-        bot = BotConfig(channel_id=int(channel_env))
     proxy = _section(raw, "http").get("proxy", "").strip() or os.getenv("HTTPS_PROXY", "").strip()
 
     custom_data_dir = raw.get("data_dir", "").strip()
