@@ -1,13 +1,13 @@
-"""配置加载：config.toml（订阅源与参数）+ .env（密钥）。"""
+"""配置加载：config.toml（参数与订阅源）+ .env（密钥）。"""
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
-import os
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = PROJECT_ROOT / "config.toml"
@@ -17,11 +17,13 @@ VALID_BOOTSTRAP = {"mark", "catch_up"}
 VALID_PROVIDERS = {"auto", "google", "llm", "none"}
 
 
+# ---------- 旧 RSS 管线（rss 子命令，默认关闭）----------
+
 @dataclass(frozen=True)
 class FeedConfig:
     name: str
     url: str
-    lang: str = ""  # "zh" 表示中文源，跳过翻译；留空则自动检测
+    lang: str = ""
 
 
 @dataclass(frozen=True)
@@ -31,7 +33,7 @@ class PollConfig:
     bootstrap: str = "mark"
     request_timeout_seconds: int = 20
     retention_days: int = 14
-    enrich_summaries: bool = True  # feed 无摘要时回源文章页提取导语
+    enrich_summaries: bool = True
 
 
 @dataclass(frozen=True)
@@ -42,19 +44,65 @@ class TranslationConfig:
 
 @dataclass(frozen=True)
 class LLMConfig:
-    enabled: bool = False
-    base_url: str = "https://api.openai.com/v1"
-    model: str = "gpt-4o-mini"
+    enabled: bool = True
+    base_url: str = "https://api.deepseek.com"
+    model: str = "deepseek-chat"
+
+
+# ---------- 3.0：共脑问答 + 选题编辑简报 ----------
+
+@dataclass(frozen=True)
+class BridgeConfig:
+    base_url: str = "http://192.168.5.33:9100"
+    collection: str = "knowledge-base-vectors"
+    token_file: str = "D:/Hermes/projects/local-data-bridge/config/bridge-client-pc.yaml"
+    top_k: int = 6
+    timeout_seconds: int = 30
+
+
+@dataclass(frozen=True)
+class ArchiveConfig:
+    # AGI Force 发布归档目录（publish_YYYYMMDD_HHMMSS.json）
+    path: str = "Z:/jovi工作目录/briefing-archive"
+    lookback_days: int = 1
+
+
+@dataclass(frozen=True)
+class BriefingConfig:
+    enabled: bool = True
+    time: str = "20:15"          # 本机本地时间，消费当天 AGI Force 早晚两班
+    watch_n: int = 6             # 📌 值得关注条数
+    inspiration_n: int = 2       # ✍️ 写作灵感条数
+
+
+@dataclass(frozen=True)
+class BotConfig:
+    channel_id: int = 0          # 仅响应/推送此频道（0 表示不限制频道但需手工指定）
+
+
+@dataclass(frozen=True)
+class LegacyRSSConfig:
+    enabled: bool = False        # 旧 2.0 RSS 实时推送与 AGI Force 重复，默认关闭
 
 
 @dataclass(frozen=True)
 class AppConfig:
-    poll: PollConfig
-    translation: TranslationConfig
-    llm: LLMConfig
+    # 旧 RSS 管线
+    poll: PollConfig = PollConfig()
+    translation: TranslationConfig = TranslationConfig()
+    llm: LLMConfig = LLMConfig()
     feeds: list[FeedConfig] = field(default_factory=list)
+    # 3.0
+    bridge: BridgeConfig = BridgeConfig()
+    archive: ArchiveConfig = ArchiveConfig()
+    briefing: BriefingConfig = BriefingConfig()
+    bot: BotConfig = BotConfig()
+    legacy_rss: LegacyRSSConfig = LegacyRSSConfig()
+    # 密钥/运行环境
     webhook_url: str = ""
+    bot_token: str = ""
     llm_api_key: str = ""
+    bridge_token: str = ""
     proxy: str = ""
     data_dir: Path = DEFAULT_DATA_DIR
 
@@ -63,17 +111,59 @@ class AppConfig:
         return self.data_dir / "history.json"
 
     @property
+    def digest_history_path(self) -> Path:
+        return self.data_dir / "digest_history.json"
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "intel.db"
+
+    @property
     def log_path(self) -> Path:
         return self.data_dir / "bot.log"
 
     @property
     def effective_provider(self) -> str:
-        """auto：配置了 LLM 且有 key 则用 llm，否则用免费 google。"""
+        """旧 RSS 管线的翻译引擎选择。"""
         if self.translation.provider != "auto":
             return self.translation.provider
         if self.llm.enabled and self.llm_api_key:
             return "llm"
         return "google"
+
+    @property
+    def llm_ready(self) -> bool:
+        return self.llm.enabled and bool(self.llm_api_key)
+
+
+def _section(raw: dict, name: str) -> dict:
+    return raw.get(name, {}) or {}
+
+
+HERMES_ENV = Path(os.path.expandvars(r"%LOCALAPPDATA%/hermes/.env"))
+
+
+def _read_hermes_key(name: str) -> str:
+    """rssbot 自己的 .env 没配 key 时，回退读 hermes 的密钥（本机同一用户）。"""
+    try:
+        for line in HERMES_ENV.read_text(encoding="utf-8").splitlines():
+            if line.startswith(name + "="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
+def _read_bridge_token(token_file: str) -> str:
+    """从 local-data-bridge 的客户端 yaml 解析 token（key 不在 .env 时用）。"""
+    import re
+
+    try:
+        text = Path(token_file).read_text(encoding="utf-8")
+        m = re.search(r'token:\s*["\']?([^"\'\s]+)', text)
+        return m.group(1) if m else ""
+    except OSError:
+        return ""
 
 
 def load_config(config_path: Path | str | None = None) -> AppConfig:
@@ -84,26 +174,39 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
     with open(config_path, "rb") as f:
         raw = tomllib.load(f)
 
-    poll = PollConfig(**raw.get("poll", {}))
-    translation = TranslationConfig(**raw.get("translation", {}))
-    llm = LLMConfig(**raw.get("llm", {}))
+    poll = PollConfig(**_section(raw, "poll"))
+    translation = TranslationConfig(**_section(raw, "translation"))
+    llm = LLMConfig(**_section(raw, "llm"))
+    bridge = BridgeConfig(**_section(raw, "bridge"))
+    archive = ArchiveConfig(**_section(raw, "archive"))
+    briefing = BriefingConfig(**_section(raw, "briefing"))
+    legacy_rss = LegacyRSSConfig(**_section(raw, "rss"))
+
+    bot_raw = _section(raw, "bot")
+    bot_raw = {k: v for k, v in bot_raw.items() if k in BotConfig.__dataclass_fields__}
+    bot = BotConfig(**bot_raw)
 
     if poll.bootstrap not in VALID_BOOTSTRAP:
-        raise ValueError(f"poll.bootstrap 必须是 {VALID_BOOTSTRAP} 之一，当前: {poll.bootstrap!r}")
+        raise ValueError(f"poll.bootstrap 必须是 {VALID_BOOTSTRAP} 之一")
     if translation.provider not in VALID_PROVIDERS:
-        raise ValueError(f"translation.provider 必须是 {VALID_PROVIDERS} 之一，当前: {translation.provider!r}")
+        raise ValueError(f"translation.provider 必须是 {VALID_PROVIDERS} 之一")
 
     feeds = [FeedConfig(**item) for item in raw.get("feeds", [])]
-    if not feeds:
-        raise ValueError("config.toml 中没有配置任何订阅源 [[feeds]]")
 
     load_dotenv(PROJECT_ROOT / ".env")
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-    llm_api_key = os.getenv("LLM_API_KEY", "").strip()
-    # 代理：优先 config.toml，其次环境变量
-    proxy = raw.get("http", {}).get("proxy", "").strip() or os.getenv("HTTPS_PROXY", "").strip()
+    bot_token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+    llm_api_key = os.getenv("LLM_API_KEY", "").strip() or _read_hermes_key("DEEPSEEK_API_KEY")
+    bridge_token = (
+        os.getenv("BRIDGE_TOKEN", "").strip()
+        or _read_hermes_key("BRIDGE_TOKEN")
+        or _read_bridge_token(bridge.token_file)
+    )
+    channel_env = os.getenv("DISCORD_CHANNEL_ID", "").strip()
+    if channel_env and not bot.channel_id:
+        bot = BotConfig(channel_id=int(channel_env))
+    proxy = _section(raw, "http").get("proxy", "").strip() or os.getenv("HTTPS_PROXY", "").strip()
 
-    # 可选：config.toml 顶层 data_dir（相对路径相对于项目根）
     custom_data_dir = raw.get("data_dir", "").strip()
     data_dir = Path(custom_data_dir) if custom_data_dir else DEFAULT_DATA_DIR
     if not data_dir.is_absolute():
@@ -114,8 +217,15 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
         translation=translation,
         llm=llm,
         feeds=feeds,
+        bridge=bridge,
+        archive=archive,
+        briefing=briefing,
+        bot=bot,
+        legacy_rss=legacy_rss,
         webhook_url=webhook_url,
+        bot_token=bot_token,
         llm_api_key=llm_api_key,
+        bridge_token=bridge_token,
         proxy=proxy,
         data_dir=data_dir,
     )

@@ -1,32 +1,56 @@
-# ===== AI 新闻 RSS Bot 配置 =====
-
-[poll]
-interval_minutes = 30          # 常驻模式下每轮间隔
-max_age_hours = 72             # 只推送 72 小时内的文章
-bootstrap = "mark"             # 首次运行历史为空时：mark=只建档不推送；catch_up=照推
-request_timeout_seconds = 20
-retention_days = 14            # 历史记录保留天数（决定去重记忆长度）
-enrich_summaries = true        # feed 无摘要时（如 Hugging Face）回源文章页提取导语
-
-[http]
-# 留空直连；需要代理时填如 "http://127.0.0.1:7890"（也可用 HTTPS_PROXY 环境变量）
-proxy = ""
-
-[translation]
-# auto  = 配置了 LLM 就用 LLM，否则用免费 Google 翻译（默认）
-# google = 始终用免费 Google 翻译
-# llm   = 始终用大模型翻译+摘要
-# none  = 不翻译
-provider = "auto"
-summary_chars = 400
+# ===== rssbot 3.0 配置：共脑问答前台 + 每日选题编辑简报 =====
 
 [llm]
-enabled = false
-base_url = "https://api.openai.com/v1"   # 任何 OpenAI 兼容端点均可（含国内服务）
-model = "gpt-4o-mini"
-# API key 在 .env 的 LLM_API_KEY 中填写
+# OpenAI 兼容端点（.env 中 LLM_API_KEY）。简报二次编辑/问答用
+enabled = true
+base_url = "https://api.deepseek.com"
+model = "deepseek-chat"
 
-# ===== 订阅源（均于 2026-10-21 实测可用）=====
+[bridge]
+# KC 共脑知识库（经 local-data-bridge 的向量检索）
+base_url = "http://192.168.5.33:9100"
+collection = "knowledge-base-vectors"
+# token 优先读 .env 的 BRIDGE_TOKEN；留空则从此客户端配置解析
+token_file = "D:/Hermes/projects/local-data-bridge/config/bridge-client-pc.yaml"
+top_k = 6
+timeout_seconds = 30
+
+[archive]
+# AGI Force 发布归档（publish_YYYYMMDD_HHMMSS.json，早晚两班）
+path = "Z:/jovi工作目录/briefing-archive"
+lookback_days = 1
+
+[briefing]
+enabled = true
+time = "20:15"                 # 消费完当天早晚两班后出简报（本机时间）
+watch_n = 6
+inspiration_n = 2
+
+[bot]
+# 仅响应/推送此频道；也可在 .env 用 DISCORD_CHANNEL_ID 设置
+channel_id = 0
+
+[rss]
+# 旧 2.0 的 14 源 RSS 实时推送（与 AGI Force 高度重复，默认关闭）
+# 想单独跑：python -m rssbot rss
+enabled = false
+
+[http]
+proxy = ""
+
+# ===== 以下仅旧 RSS 管线（rss 子命令）使用 =====
+
+[poll]
+interval_minutes = 30
+max_age_hours = 72
+bootstrap = "mark"
+request_timeout_seconds = 20
+retention_days = 14
+enrich_summaries = true
+
+[translation]
+provider = "auto"
+summary_chars = 400
 
 [[feeds]]
 name = "OpenAI"

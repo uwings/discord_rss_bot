@@ -69,5 +69,23 @@ class DiscordWebhookNotifier:
             raise RuntimeError(f"Discord webhook 返回 {resp.status_code}: {body}")
         raise RuntimeError("Discord webhook 多次限流后仍发送失败")
 
+    async def send_embeds(self, embeds: list[dict]) -> None:
+        """发送通用 embed（3.0 简报/问答用），处理限流与重试。"""
+        payload = {"embeds": embeds[:10]}  # Webhook 每条消息最多 10 个 embed
+        for attempt in range(4):
+            resp = await self.client.post(self.webhook_url, params={"wait": "true"}, json=payload)
+            if resp.status_code == 429:
+                retry_after = resp.json().get("retry_after", 2) if resp.content else 2
+                logger.warning("Discord 限流，%.1f 秒后重试", retry_after)
+                await asyncio.sleep(float(retry_after) + 0.5)
+                continue
+            if resp.status_code in (200, 204):
+                return
+            if 500 <= resp.status_code < 600 and attempt < 3:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            raise RuntimeError(f"Discord webhook 返回 {resp.status_code}: {resp.text[:300]}")
+        raise RuntimeError("Discord webhook 多次限流后仍发送失败")
+
     async def close(self) -> None:  # 客户端由外部统一管理，这里无需处理
         return None
