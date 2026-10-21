@@ -229,8 +229,12 @@ def load_config(config_path: Path | str | None = None) -> AppConfig:
 
     feeds = [FeedConfig(**item) for item in raw.get("feeds", [])]
 
-    # 从 cwd 向上查找 .env（部署目录自洽；本地开发也命中项目根）
-    load_dotenv()
+    # .env：依次尝试 cwd、配置文件旁、项目根（不同启动方式 cwd 不固定）
+    for env_dir in (Path.cwd(), config_path.parent, PROJECT_ROOT):
+        env_file = env_dir / ".env"
+        if env_file.exists():
+            load_dotenv(env_file, override=False)
+            break
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
     bot_token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
     llm_api_key = os.getenv("LLM_API_KEY", "").strip() or _read_hermes_key("DEEPSEEK_API_KEY")
